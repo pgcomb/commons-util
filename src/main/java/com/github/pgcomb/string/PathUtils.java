@@ -8,13 +8,19 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
+ * 路径工具
  * @author 王东旭
- * @date 2018-06-06
  */
 public class PathUtils {
 
     private static final String FILE_SEPARATOR = FileSystems.getDefault().getSeparator();
 
+    /**
+     * 拼接路径
+     *
+     * @param paths 路径片段
+     * @return 返回路径
+     */
     public static String joinPath(String... paths) {
         List<String> filterPath = Arrays.stream(paths)
                 .filter(StringUtils::isNotEmpty)
@@ -23,6 +29,12 @@ public class PathUtils {
                 .replace(FILE_SEPARATOR + FILE_SEPARATOR, FILE_SEPARATOR);
     }
 
+    /**
+     * 替换路径分割符
+     *
+     * @param path 路径
+     * @return 分割后的路径
+     */
     private static String replaceSeparator(String path) {
         if (FILE_SEPARATOR.equals("/")) {
             return path.replace("\\", "/");
