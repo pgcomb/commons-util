@@ -6,7 +6,7 @@
 
     <groupId>com.github.pgcomb</groupId>
     <artifactId>commons-util</artifactId>
-    <version>0.0.1</version>
+    <version>0.0.3-SNAPSHOTS</version>
     <build>
         <plugins>
             <plugin>
