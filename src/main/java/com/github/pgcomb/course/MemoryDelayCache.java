@@ -27,6 +27,11 @@ public class MemoryDelayCache<T> implements DelayCache<T> {
         this.supplier = tSupplier;
     }
 
+    public MemoryDelayCache(T t,@Nonnull Supplier<T> tSupplier) {
+        this.data = t;
+        this.supplier = tSupplier;
+    }
+
     public MemoryDelayCache(int refreshInterval, @Nonnull Supplier<T> tSupplier) {
         this.supplier = tSupplier;
         this.refreshInterval = refreshInterval;
