@@ -34,7 +34,7 @@ public class FileUtils {
      * @param file 待删除<code>File</code>
      * @param stopPath stopPath 清除空文件夹的位置<code>String</code>
      */
-    private static void upRm(File file, String stopPath) {
+    public static void upRm(File file, String stopPath) {
         if (file.isFile()) {
             file.delete();
         }
