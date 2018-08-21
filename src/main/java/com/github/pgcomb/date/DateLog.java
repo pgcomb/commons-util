@@ -3,12 +3,20 @@ package com.github.pgcomb.date;
 import java.time.Duration;
 import java.time.LocalDateTime;
 
-public abstract class DateLog {
+/**
+ * 记录时间间隔
+ *
+ * @author 王东旭
+ */
+public class DateLog {
 
     private static final  ThreadLocal<WindowLink<LocalDateTime>> DATES = new ThreadLocal<>();
 
     private static void init() {
         DATES.set(new WindowLink<>(2, LocalDateTime.now()));
+    }
+
+    private DateLog() {
     }
 
     public static void record(){

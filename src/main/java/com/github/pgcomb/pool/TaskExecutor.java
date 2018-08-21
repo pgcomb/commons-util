@@ -90,6 +90,39 @@ public class TaskExecutor {
     }
 
     /**
+     * 同步任务，一般不用
+     *
+     * @param <R> 返回数据格式
+     * @return 执行结果
+     */
+    public <T, R> Map<T, R> asyncExec(List<T> list, Function<T, R> function) {
+
+        Map<T, Future<R>> taskMap = list.stream()
+                .collect(Collectors.toMap(k -> k, v -> threadPoolExecutor.submit(() -> {
+                    //执行任务方法
+                    return function.apply(v);
+                })));
+
+        Map<T, R> result = new HashMap<>();
+        taskMap.forEach((k, v) -> {
+            try {
+                result.put(k, v.get());
+            } catch (InterruptedException | ExecutionException e) {
+                e.printStackTrace();
+            }
+        });
+        return result;
+    }
+
+    public <R> Map<Integer,R> asyncExec(List<Supplier<R>> list) {
+        List<Integer> ints = new ArrayList<>();
+        for (int i = 0; i < list.size(); i++) {
+            ints.add(i);
+        }
+        return asyncExec(ints, (Function<Integer, R>) integer -> list.get(integer).get());
+    }
+
+    /**
      * 带有回调的分组任务
      * <p>
      * 一个任务集合执行完成后统一回调
@@ -104,7 +137,7 @@ public class TaskExecutor {
 
         //将任务装换成map  key:待处理的数据   value:处理的信息
         Map<T, TaskMsg<T, R>> taskMap = tasks.stream()
-                .collect(Collectors.toMap(k -> k, (Function<T, TaskMsg<T, R>>) TaskMsg::new));
+                .collect(Collectors.toMap(k -> k, TaskMsg::new));
 
         taskMap.forEach((T task, TaskMsg<T, R> taskMsg) -> {
             //依次提交任务到线程池
