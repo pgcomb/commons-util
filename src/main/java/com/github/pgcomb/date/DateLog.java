@@ -1,6 +1,8 @@
 package com.github.pgcomb.date;
 
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -16,13 +18,11 @@ import java.util.function.Consumer;
 
 public class DateLog {
 
+    private static final Logger log = LoggerFactory.getLogger(DateLog.class);
+
     private static final String DEF_NAME = "_def";
 
-    public DateLog() {
-        ScheduledExecutorService executorService = new ScheduledThreadPoolExecutor(1,
-                new BasicThreadFactory.Builder().namingPattern("DateLog-schedule-pool-%d").daemon(true).build());
-        executorService.scheduleAtFixedRate(DATES::del,1,5, TimeUnit.SECONDS);
-    }
+    private DateLog() {}
 
     private static final ThreadNameMap DATES = new ThreadNameMap();
 
@@ -40,7 +40,7 @@ public class DateLog {
 
     public static void record(String name, ThreeFunc<LocalDateTime, LocalDateTime, Duration> threeFunc) {
 
-        recordS(Thread.currentThread(),name,threeFunc);
+        recordS(Thread.currentThread(), name, threeFunc);
     }
 
     public static void record(BiConsumer<LocalDateTime, LocalDateTime> biConsumer) {
@@ -59,7 +59,7 @@ public class DateLog {
         record(name, (a, b, c) -> consumer.accept(c));
     }
 
-    private static void recordS(Thread thread,String name, ThreeFunc<LocalDateTime, LocalDateTime, Duration> threeFunc) {
+    private static void recordS(Thread thread, String name, ThreeFunc<LocalDateTime, LocalDateTime, Duration> threeFunc) {
 
         DATES.add(thread, name, new WindowLink<>(2, LocalDateTime.now()), LocalDateTime.now());
         WindowLink<LocalDateTime> windowLink = DATES.get(Thread.currentThread(), name);
@@ -85,6 +85,12 @@ public class DateLog {
 
     private static class ThreadNameMap {
 
+        private ThreadNameMap() {
+            ScheduledExecutorService executorService = new ScheduledThreadPoolExecutor(1,
+                    new BasicThreadFactory.Builder().namingPattern("DateLog-del-pool-%d").daemon(true).build());
+            executorService.scheduleAtFixedRate(this::del, 1, 5, TimeUnit.SECONDS);
+        }
+
         private Map<Thread, Map<String, WindowLink<LocalDateTime>>> threadMapMap = new ConcurrentHashMap<>();
 
         private WindowLink<LocalDateTime> get(Thread thread, String name) {
@@ -103,9 +109,9 @@ public class DateLog {
         }
 
         private void del() {
-            System.out.println(threadMapMap);
             Set<Thread> threads = new HashSet<>(threadMapMap.keySet());
             threads.stream().filter(thread -> !thread.isAlive()).forEach(threadMapMap::remove);
+            log.debug("ThreadNameMap#threadMapMap:{}",threadMapMap);
         }
     }
 }
