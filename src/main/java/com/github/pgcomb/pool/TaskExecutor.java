@@ -3,7 +3,10 @@ package com.github.pgcomb.pool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -21,15 +24,31 @@ public class TaskExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(TaskExecutor.class);
 
+    /**
+     * 执行任务线程池
+     */
     private ThreadPoolExecutor threadPoolExecutor;
 
+    /**
+     * 回调线程池
+     */
     private ThreadPoolExecutor threadPoolExecutorMain;
 
+    private String name;
+
+    private int maxPoolSize;
+
     public TaskExecutor(String name, int maxPoolSize, int queueCapacity) {
+        this.name = name;
+        this.maxPoolSize = maxPoolSize;
         threadPoolExecutor = PoolUtil.getPool(name, maxPoolSize, queueCapacity);
-        threadPoolExecutorMain = PoolUtil.getPool(name + "-main", maxPoolSize, Integer.MAX_VALUE);
     }
 
+    public void initMainPool(){
+        if (threadPoolExecutorMain == null){
+            threadPoolExecutorMain = PoolUtil.getPool(name + "-callback", maxPoolSize, Integer.MAX_VALUE);
+        }
+    }
     /**
      * 异步执行任务
      *
@@ -38,6 +57,7 @@ public class TaskExecutor {
      * @param <R>      任务回调的数据
      */
     public <R> void syncExec(Supplier<R> supplier, Consumer<R> callback) {
+        initMainPool();
         threadPoolExecutor.submit(() -> {
             R r = supplier.get();
             threadPoolExecutorMain.submit(() -> callback.accept(r));
@@ -73,7 +93,7 @@ public class TaskExecutor {
     }
 
     /**
-     * 同步任务，一般不用
+     * 同步任务
      *
      * @param supplier 任务方法
      * @param <R>      返回数据格式
@@ -90,7 +110,7 @@ public class TaskExecutor {
     }
 
     /**
-     * 同步任务，一般不用
+     * 同步任务
      *
      * @param <R> 返回数据格式
      * @return 执行结果
@@ -103,23 +123,23 @@ public class TaskExecutor {
                     return function.apply(v);
                 })));
 
-        Map<T, R> result = new HashMap<>();
+        Map<T, R> result = new HashMap<>(list.size());
         taskMap.forEach((k, v) -> {
             try {
                 result.put(k, v.get());
             } catch (InterruptedException | ExecutionException e) {
-                e.printStackTrace();
+                log.error("TaskExecutor#asyncExec:Future.get()", e);
             }
         });
         return result;
     }
 
-    public <R> Map<Integer,R> asyncExec(List<Supplier<R>> list) {
+    public <R> Map<Integer, R> asyncExec(List<Supplier<R>> list) {
         List<Integer> ints = new ArrayList<>();
         for (int i = 0; i < list.size(); i++) {
             ints.add(i);
         }
-        return asyncExec(ints, (Function<Integer, R>) integer -> list.get(integer).get());
+        return asyncExec(ints, integer -> list.get(integer).get());
     }
 
     /**
@@ -134,7 +154,7 @@ public class TaskExecutor {
      * @param <R>      回调数据类型
      */
     public <T, R> void syncGroupExec(List<T> tasks, Function<T, R> taskFunc, Consumer<Map<T, R>> callback) {
-
+        initMainPool();
         //将任务装换成map  key:待处理的数据   value:处理的信息
         Map<T, TaskMsg<T, R>> taskMap = tasks.stream()
                 .collect(Collectors.toMap(k -> k, TaskMsg::new));
@@ -176,71 +196,6 @@ public class TaskExecutor {
             ints.add(i);
         }
         syncGroupExec(ints, integer -> consumers.get(integer).get(), callback);
-    }
-
-    /**
-     * 同步返回结果的分组任务
-     *
-     * @param tasks    任务数据集合
-     * @param taskFunc 任务
-     * @param <T>      数据类型
-     * @param <R>      回调类型
-     * @return 结果集
-     */
-    public <T, R> Map<T, R> asyncGroupExec(List<T> tasks, Function<T, R> taskFunc) {
-
-        Map<T, TaskMsg<T, R>> taskMap = tasks.stream()
-                .collect(Collectors.toMap(k -> k, (Function<T, TaskMsg<T, R>>) TaskMsg::new));
-
-        Map<T, R> result = new HashMap<>(5);
-
-        Object lock = new Object();
-
-        taskMap.forEach((T task, TaskMsg<T, R> taskMsg) -> {
-            Future<?> future = threadPoolExecutor.submit(() -> {
-                        R apply = taskFunc.apply(task);
-                        taskMsg.setCallBack(apply);
-                        boolean isEnd;
-                        synchronized (taskMap) {
-                            taskMsg.end();
-                            isEnd = taskMap.entrySet().stream().allMatch(mapEntity -> mapEntity.getValue().isEnd());
-                        }
-                        if (isEnd) {
-                            synchronized (lock) {
-                                taskMap.forEach((key, value) -> result.put(key, value.getCallBack()));
-                                lock.notifyAll();
-                            }
-                        }
-                    }
-            );
-            taskMsg.setFuture(future);
-        });
-        try {
-            synchronized (lock) {
-                while (result.size() == 0) {
-                    lock.wait();
-                }
-            }
-        } catch (InterruptedException e) {
-            log.error("", e);
-            Thread.currentThread().interrupt();
-        }
-        return result;
-    }
-
-    /**
-     * 同步返回结果的分组任务
-     *
-     * @param tasks 任务集合
-     * @param <R>   返回数据格式
-     * @return 结果集
-     */
-    public <R> Map<Integer, R> asyncGroupExec(List<Supplier<R>> tasks) {
-        List<Integer> ints = new ArrayList<>();
-        for (int i = 0; i < tasks.size(); i++) {
-            ints.add(i);
-        }
-        return asyncGroupExec(ints, integer -> tasks.get(integer).get());
     }
 
     /**

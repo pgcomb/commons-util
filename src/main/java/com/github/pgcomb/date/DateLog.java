@@ -1,57 +1,78 @@
 package com.github.pgcomb.date;
 
+import org.apache.commons.lang3.concurrent.BasicThreadFactory;
+
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 public class DateLog {
 
     private static final String DEF_NAME = "_def";
+
     public DateLog() {
+        ScheduledExecutorService executorService = new ScheduledThreadPoolExecutor(1,
+                new BasicThreadFactory.Builder().namingPattern("DateLog-schedule-pool-%d").daemon(true).build());
+        executorService.scheduleAtFixedRate(DATES::del,1,5, TimeUnit.SECONDS);
     }
 
-    private static final  ThreadLocal<Map<String,WindowLink<LocalDateTime>>> DATES = new ThreadLocal<>();
+    private static final ThreadNameMap DATES = new ThreadNameMap();
 
-    private static void init(String name) {
-        if (DATES.get() == null){
-            Map<String,WindowLink<LocalDateTime>> objects = new HashMap<>(1);
-            DATES.set(objects);
-        }
-        DATES.get().put(name,new WindowLink<>(2,LocalDateTime.now()));
-    }
-
-    public static void record(){
+    public static void record() {
         record(DEF_NAME);
     }
 
-    public static void record(String name){
-        if (DATES.get() == null || DATES.get().get(name) == null){
-            init(name);
-        }
-        DATES.get().get(name).add(LocalDateTime.now());
-    }
-    public static void record(ThreeFunc<LocalDateTime,LocalDateTime,Duration> threeFunc){
-        record(DEF_NAME,threeFunc);
-    }
-    public static void record(String name, ThreeFunc<LocalDateTime,LocalDateTime,Duration> threeFunc){
-        if (DATES.get() == null || DATES.get().get(name) == null){
-            init(name);
-        }
-        WindowLink<LocalDateTime> localDateTimes = DATES.get().get(name);
-        localDateTimes.add(LocalDateTime.now());
-        LocalDateTime dateTime0 = localDateTimes.get(0);
-        LocalDateTime dateTime1 = localDateTimes.get(1);
-        Duration between = Duration.between(dateTime1,dateTime0);
-        threeFunc.func(dateTime0,dateTime1,between);
+    public static void record(String name) {
+        recordS(Thread.currentThread(), name, null);
     }
 
-    public static void end(){
-        DATES.remove();
+    public static void record(ThreeFunc<LocalDateTime, LocalDateTime, Duration> threeFunc) {
+        record(DEF_NAME, threeFunc);
+    }
+
+    public static void record(String name, ThreeFunc<LocalDateTime, LocalDateTime, Duration> threeFunc) {
+
+        recordS(Thread.currentThread(),name,threeFunc);
+    }
+
+    public static void record(BiConsumer<LocalDateTime, LocalDateTime> biConsumer) {
+        record(DEF_NAME, biConsumer);
+    }
+
+    public static void record(String name, BiConsumer<LocalDateTime, LocalDateTime> biConsumer) {
+        record(name, (a, b, c) -> biConsumer.accept(a, b));
+    }
+
+    public static void record(Consumer<Duration> consumer) {
+        record(DEF_NAME, consumer);
+    }
+
+    public static void record(String name, Consumer<Duration> consumer) {
+        record(name, (a, b, c) -> consumer.accept(c));
+    }
+
+    private static void recordS(Thread thread,String name, ThreeFunc<LocalDateTime, LocalDateTime, Duration> threeFunc) {
+
+        DATES.add(thread, name, new WindowLink<>(2, LocalDateTime.now()), LocalDateTime.now());
+        WindowLink<LocalDateTime> windowLink = DATES.get(Thread.currentThread(), name);
+        if (threeFunc != null && windowLink != null) {
+            LocalDateTime dateTime0 = windowLink.get(0);
+            LocalDateTime dateTime1 = windowLink.get(1);
+            Duration between = Duration.between(dateTime1, dateTime0);
+            threeFunc.func(dateTime0, dateTime1, between);
+        }
     }
 
     @FunctionalInterface
-    public interface ThreeFunc<A,B,C>{
+    public interface ThreeFunc<A, B, C> {
         /**
          * 三个参数的方法
          *
@@ -59,6 +80,32 @@ public class DateLog {
          * @param b 第二个
          * @param c 第三个
          */
-        void func(A a,B b,C c);
+        void func(A a, B b, C c);
+    }
+
+    private static class ThreadNameMap {
+
+        private Map<Thread, Map<String, WindowLink<LocalDateTime>>> threadMapMap = new ConcurrentHashMap<>();
+
+        private WindowLink<LocalDateTime> get(Thread thread, String name) {
+            Map<String, WindowLink<LocalDateTime>> stringWindowLinkMap = threadMapMap.get(thread);
+            if (stringWindowLinkMap == null) {
+                return null;
+            } else {
+                return stringWindowLinkMap.get(name);
+            }
+        }
+
+        private void add(Thread thread, String name, WindowLink<LocalDateTime> windowLink, LocalDateTime now) {
+            threadMapMap.putIfAbsent(thread, new ConcurrentHashMap<>(1));
+            threadMapMap.get(thread).putIfAbsent(name, windowLink);
+            threadMapMap.get(thread).get(name).add(now);
+        }
+
+        private void del() {
+            System.out.println(threadMapMap);
+            Set<Thread> threads = new HashSet<>(threadMapMap.keySet());
+            threads.stream().filter(thread -> !thread.isAlive()).forEach(threadMapMap::remove);
+        }
     }
 }
