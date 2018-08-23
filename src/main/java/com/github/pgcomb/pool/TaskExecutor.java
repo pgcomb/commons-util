@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -38,9 +39,12 @@ public class TaskExecutor {
 
     private int maxPoolSize;
 
+    private int queueCapacity;
+
     public TaskExecutor(String name, int maxPoolSize, int queueCapacity) {
         this.name = name;
         this.maxPoolSize = maxPoolSize;
+        this.queueCapacity = queueCapacity;
         threadPoolExecutor = PoolUtil.getPool(name, maxPoolSize, queueCapacity);
     }
 
@@ -48,6 +52,25 @@ public class TaskExecutor {
         if (threadPoolExecutorMain == null){
             threadPoolExecutorMain = PoolUtil.getPool(name + "-callback", maxPoolSize, Integer.MAX_VALUE);
         }
+    }
+    public int getWorkQueueSize(){
+        if (threadPoolExecutor != null && !threadPoolExecutor.isShutdown()){
+            return threadPoolExecutor.getQueue().size();
+        }
+        return 0;
+    }
+    public int getWorkFreeSize(){
+        if (threadPoolExecutor != null && !threadPoolExecutor.isShutdown()){
+            return queueCapacity - threadPoolExecutor.getQueue().size();
+        }
+        return 0;
+    }
+
+    public int getCallBackQueueSize(){
+        if (threadPoolExecutor != null && !threadPoolExecutor.isShutdown()){
+            return threadPoolExecutorMain.getQueue().size();
+        }
+        return 0;
     }
     /**
      * 异步执行任务
@@ -64,10 +87,20 @@ public class TaskExecutor {
         });
     }
 
+    public <T,R> void syncExec(RunProp<T,R> runProp, Consumer<R> callback) {
+        initMainPool();
+        threadPoolExecutor.submit(() -> {
+            R r = runProp.get();
+            threadPoolExecutorMain.submit(() -> callback.accept(r));
+        });
+    }
+
     public void syncExec(Runnable runnable) {
         threadPoolExecutor.submit(runnable);
     }
-
+    public <T> void syncExec(RunProp<T,?> runnable) {
+        threadPoolExecutor.submit(runnable);
+    }
     /**
      * 多个带有回调的异步任务
      *
@@ -208,6 +241,26 @@ public class TaskExecutor {
         }).start();
     }
 
+    public abstract class RunProp<T,R> implements Supplier<R>,Runnable{
+
+        public RunProp(T data) {
+            this.data = data;
+        }
+
+        abstract R work(T data);
+
+        @Override
+        public final R get() {
+            return work(data);
+        }
+
+        @Override
+        public final void run() {
+            work(data);
+        }
+
+        private T data;
+    }
     /**
      * 任务信息类
      *
