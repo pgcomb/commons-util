@@ -1,5 +1,6 @@
 package com.github.pgcomb.date;
 
+import com.github.pgcomb.func.ThreeFunc;
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,18 +70,6 @@ public class DateLog {
             Duration between = Duration.between(dateTime1, dateTime0);
             threeFunc.func(dateTime0, dateTime1, between);
         }
-    }
-
-    @FunctionalInterface
-    public interface ThreeFunc<A, B, C> {
-        /**
-         * 三个参数的方法
-         *
-         * @param a 第一个
-         * @param b 第二个
-         * @param c 第三个
-         */
-        void func(A a, B b, C c);
     }
 
     private static class ThreadNameMap {

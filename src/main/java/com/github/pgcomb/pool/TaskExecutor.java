@@ -4,10 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -148,26 +145,26 @@ public class TaskExecutor {
      * @param <R> 返回数据格式
      * @return 执行结果
      */
-    public <T, R> Map<T, R> asyncExec(List<T> list, Function<T, R> function) {
+    public <T, R> List<R> asyncExec(List<T> list, Function<T, R> function) {
 
-        Map<T, Future<R>> taskMap = list.stream()
-                .collect(Collectors.toMap(k -> k, v -> threadPoolExecutor.submit(() -> {
-                    //执行任务方法
-                    return function.apply(v);
-                })));
+        List<Future<R>> taskFutures = list.stream()
+                .map(t -> threadPoolExecutor.submit(() -> function.apply(t)))
+                .collect(Collectors.toList());
 
-        Map<T, R> result = new HashMap<>(list.size());
-        taskMap.forEach((k, v) -> {
+        List<R> result = new ArrayList<>(list.size());
+
+        taskFutures.forEach((v) -> {
             try {
-                result.put(k, v.get());
+                result.add(v.get());
             } catch (InterruptedException | ExecutionException e) {
+                result.add(null);
                 log.error("TaskExecutor#asyncExec:Future.get()", e);
             }
         });
         return result;
     }
 
-    public <R> Map<Integer, R> asyncExec(List<Supplier<R>> list) {
+    public <R> List<R> asyncExec(List<Supplier<R>> list) {
         List<Integer> ints = new ArrayList<>();
         for (int i = 0; i < list.size(); i++) {
             ints.add(i);
@@ -186,28 +183,29 @@ public class TaskExecutor {
      * @param <T>      数据类型
      * @param <R>      回调数据类型
      */
-    public <T, R> void syncGroupExec(List<T> tasks, Function<T, R> taskFunc, Consumer<Map<T, R>> callback) {
+    public <T, R> void syncGroupExec(List<T> tasks, Function<T, R> taskFunc, Consumer<List<R>> callback) {
         initMainPool();
-        //将任务装换成map  key:待处理的数据   value:处理的信息
-        Map<T, TaskMsg<T, R>> taskMap = tasks.stream()
-                .collect(Collectors.toMap(k -> k, TaskMsg::new));
 
-        taskMap.forEach((T task, TaskMsg<T, R> taskMsg) -> {
+        List<TaskMsg<T,R>> msgList = tasks.stream()
+                .map((Function<T, TaskMsg<T, R>>) TaskMsg::new)
+                .collect(Collectors.toList());
+
+        msgList.forEach(taskMsg -> {
             //依次提交任务到线程池
             Future<?> future = threadPoolExecutor.submit(() -> {
                         //执行任务方法
-                        R apply = taskFunc.apply(task);
+                        R apply = taskFunc.apply(taskMsg.getData());
                         taskMsg.setCallBack(apply);
                         boolean isEnd;
                         //同一个任务组依次判断，只有都执行结束的时候才执行回调
-                        synchronized (taskMap) {
+                        synchronized (msgList) {
                             taskMsg.end();
-                            isEnd = taskMap.entrySet().stream().allMatch(mapEntity -> mapEntity.getValue().isEnd());
+                            isEnd = msgList.stream().allMatch(TaskMsg::isEnd);
                         }
                         if (isEnd) {
-                            Map<T, R> collect = taskMap.entrySet()
-                                    .stream()
-                                    .collect(Collectors.toMap(Map.Entry::getKey, entity -> entity.getValue().getCallBack()));
+                            List<R> collect = msgList.stream()
+                                    .map(TaskMsg::getCallBack)
+                                    .collect(Collectors.toList());
                             threadPoolExecutorMain.submit(() -> callback.accept(collect));
                         }
                     }
@@ -223,7 +221,7 @@ public class TaskExecutor {
      * @param callback  回调
      * @param <R>       回调数据类型
      */
-    public <R> void syncGroupExec(List<Supplier<R>> consumers, Consumer<Map<Integer, R>> callback) {
+    public <R> void syncGroupExec(List<Supplier<R>> consumers, Consumer<List<R>> callback) {
         List<Integer> ints = new ArrayList<>();
         for (int i = 0; i < consumers.size(); i++) {
             ints.add(i);
@@ -241,13 +239,13 @@ public class TaskExecutor {
         }).start();
     }
 
-    public abstract class RunProp<T,R> implements Supplier<R>,Runnable{
+    public abstract static class RunProp<T,R> implements Supplier<R>,Runnable{
 
         public RunProp(T data) {
             this.data = data;
         }
 
-        abstract R work(T data);
+        public abstract R work(T data);
 
         @Override
         public final R get() {
