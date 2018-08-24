@@ -1,5 +1,8 @@
 package com.github.pgcomb.io;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.*;
 import java.util.function.Consumer;
 
@@ -13,6 +16,8 @@ import java.util.function.Consumer;
  * @since jdk8
  */
 public class IOUtil {
+
+    private static final Logger log = LoggerFactory.getLogger(IOUtil.class);
 
     public static BufferedReader newBR(File file) throws FileNotFoundException {
         return new BufferedReader(new InputStreamReader(new FileInputStream(file)));
@@ -37,7 +42,7 @@ public class IOUtil {
                 consumer.accept(a);
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            log.error("IOUtil#readLine",e);
         }
     }
 }
