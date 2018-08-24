@@ -1,6 +1,7 @@
 package com.github.pgcomb.io;
 
 import java.io.*;
+import java.util.function.Consumer;
 
 /**
  * Title: IOUtil <br>
@@ -27,5 +28,16 @@ public class IOUtil {
 
     public static BufferedWriter newBW(String file) throws FileNotFoundException {
         return newBW(new File(file));
+    }
+    public static void readLine(String file, Consumer<String> consumer){
+        String a;
+        try {
+            BufferedReader br = newBR(file);
+            while ((a = br.readLine()) != null){
+                consumer.accept(a);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 }
