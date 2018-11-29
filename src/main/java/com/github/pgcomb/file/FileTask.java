@@ -61,7 +61,7 @@ public class FileTask {
             String a;
             while ((a = br.readLine()) != null) {
                 total.syncFunc(data -> data + 1);
-                task.syncExec(new TaskExecutor.RunProp<String, R>(a) {
+                task.asyncExec(new TaskExecutor.RunProp<String, R>(a) {
                     @Override
                     public R work(String data) {
                         return function.apply(data);
@@ -96,7 +96,7 @@ public class FileTask {
         try (BufferedReader br = IOUtil.newBR(src)) {
             String a;
             while ((a = br.readLine()) != null) {
-                task.syncExec(new TaskExecutor.RunProp<String, String>(a) {
+                task.asyncExec(new TaskExecutor.RunProp<String, String>(a) {
                     @Override
                     public String work(String data) {
                         function.accept(data);

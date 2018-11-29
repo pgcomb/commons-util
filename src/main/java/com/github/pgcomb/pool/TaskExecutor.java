@@ -45,30 +45,33 @@ public class TaskExecutor {
         threadPoolExecutor = PoolUtil.getPool(name, maxPoolSize, queueCapacity);
     }
 
-    public void initMainPool(){
-        if (threadPoolExecutorMain == null){
+    public void initMainPool() {
+        if (threadPoolExecutorMain == null) {
             threadPoolExecutorMain = PoolUtil.getPool(name + "-callback", maxPoolSize, Integer.MAX_VALUE);
         }
     }
-    public int getWorkQueueSize(){
-        if (threadPoolExecutor != null && !threadPoolExecutor.isShutdown()){
+
+    public int getWorkQueueSize() {
+        if (threadPoolExecutor != null && !threadPoolExecutor.isShutdown()) {
             return threadPoolExecutor.getQueue().size();
         }
         return 0;
     }
-    public int getWorkFreeSize(){
-        if (threadPoolExecutor != null && !threadPoolExecutor.isShutdown()){
+
+    public int getWorkFreeSize() {
+        if (threadPoolExecutor != null && !threadPoolExecutor.isShutdown()) {
             return queueCapacity - threadPoolExecutor.getQueue().size();
         }
         return 0;
     }
 
-    public int getCallBackQueueSize(){
-        if (threadPoolExecutor != null && !threadPoolExecutor.isShutdown()){
+    public int getCallBackQueueSize() {
+        if (threadPoolExecutor != null && !threadPoolExecutor.isShutdown()) {
             return threadPoolExecutorMain.getQueue().size();
         }
         return 0;
     }
+
     /**
      * 异步执行任务
      *
@@ -76,7 +79,7 @@ public class TaskExecutor {
      * @param callback 回调方法
      * @param <R>      任务回调的数据
      */
-    public <R> void syncExec(Supplier<R> supplier, Consumer<R> callback) {
+    public <R> void asyncExec(Supplier<R> supplier, Consumer<R> callback) {
         initMainPool();
         threadPoolExecutor.submit(() -> {
             R r = supplier.get();
@@ -84,7 +87,7 @@ public class TaskExecutor {
         });
     }
 
-    public <T,R> void syncExec(RunProp<T,R> runProp, Consumer<R> callback) {
+    public <T, R> void asyncExec(RunProp<T, R> runProp, Consumer<R> callback) {
         initMainPool();
         threadPoolExecutor.submit(() -> {
             R r = runProp.get();
@@ -92,12 +95,14 @@ public class TaskExecutor {
         });
     }
 
-    public void syncExec(Runnable runnable) {
+    public void asyncExec(Runnable runnable) {
         threadPoolExecutor.submit(runnable);
     }
-    public <T> void syncExec(RunProp<T,?> runnable) {
+
+    public <T> void syncExec(RunProp<T, ?> runnable) {
         threadPoolExecutor.submit(runnable);
     }
+
     /**
      * 多个带有回调的异步任务
      *
@@ -107,8 +112,8 @@ public class TaskExecutor {
      * @param <T>      数据格式
      * @param <R>      回调数据
      */
-    public <T, R> void syncExec(List<T> tasks, Function<T, R> taskFunc, Consumer<R> callback) {
-        tasks.forEach(t -> syncExec(() -> taskFunc.apply(t), callback));
+    public <T, R> void asyncExec(List<T> tasks, Function<T, R> taskFunc, Consumer<R> callback) {
+        tasks.forEach(t -> asyncExec(() -> taskFunc.apply(t), callback));
     }
 
     /**
@@ -118,8 +123,8 @@ public class TaskExecutor {
      * @param taskFunc 任务方法
      * @param <T>      数据格式
      */
-    public <T> void syncExec(List<T> tasks, Consumer<T> taskFunc) {
-        tasks.forEach(t -> syncExec(() -> taskFunc.accept(t)));
+    public <T> void asyncExec(List<T> tasks, Consumer<T> taskFunc) {
+        tasks.forEach(t -> asyncExec(() -> taskFunc.accept(t)));
     }
 
     /**
@@ -129,7 +134,7 @@ public class TaskExecutor {
      * @param <R>      返回数据格式
      * @return 执行结果
      */
-    public <R> R asyncExec(Supplier<R> supplier) {
+    public <R> R syncExec(Supplier<R> supplier) {
         Future<R> submit = threadPoolExecutor.submit(supplier::get);
         try {
             return submit.get();
@@ -140,12 +145,15 @@ public class TaskExecutor {
     }
 
     /**
-     * 同步任务
+     * 同步执行
      *
-     * @param <R> 返回数据格式
-     * @return 执行结果
+     * @param list     List
+     * @param function function
+     * @param <T>      T
+     * @param <R>      R
+     * @return List
      */
-    public <T, R> List<R> asyncExec(List<T> list, Function<T, R> function) {
+    public <T, R> List<R> syncExec(List<T> list, Function<T, R> function) {
 
         List<Future<R>> taskFutures = list.stream()
                 .map(t -> threadPoolExecutor.submit(() -> function.apply(t)))
@@ -164,12 +172,12 @@ public class TaskExecutor {
         return result;
     }
 
-    public <R> List<R> asyncExec(List<Supplier<R>> list) {
+    public <R> List<R> syncExec(List<Supplier<R>> list) {
         List<Integer> ints = new ArrayList<>();
         for (int i = 0; i < list.size(); i++) {
             ints.add(i);
         }
-        return asyncExec(ints, integer -> list.get(integer).get());
+        return syncExec(ints, integer -> list.get(integer).get());
     }
 
     /**
@@ -183,10 +191,10 @@ public class TaskExecutor {
      * @param <T>      数据类型
      * @param <R>      回调数据类型
      */
-    public <T, R> void syncGroupExec(List<T> tasks, Function<T, R> taskFunc, Consumer<List<R>> callback) {
+    public <T, R> void asyncGroupExec(List<T> tasks, Function<T, R> taskFunc, Consumer<List<R>> callback) {
         initMainPool();
 
-        List<TaskMsg<T,R>> msgList = tasks.stream()
+        List<TaskMsg<T, R>> msgList = tasks.stream()
                 .map((Function<T, TaskMsg<T, R>>) TaskMsg::new)
                 .collect(Collectors.toList());
 
@@ -221,25 +229,30 @@ public class TaskExecutor {
      * @param callback  回调
      * @param <R>       回调数据类型
      */
-    public <R> void syncGroupExec(List<Supplier<R>> consumers, Consumer<List<R>> callback) {
+    public <R> void asyncGroupExec(List<Supplier<R>> consumers, Consumer<List<R>> callback) {
         List<Integer> ints = new ArrayList<>();
         for (int i = 0; i < consumers.size(); i++) {
             ints.add(i);
         }
-        syncGroupExec(ints, integer -> consumers.get(integer).get(), callback);
+        asyncGroupExec(ints, integer -> consumers.get(integer).get(), callback);
     }
 
     /**
      * 关闭线程池
      */
-    public void stop() {
+    public void asyncStop() {
         new Thread(() -> {
             PoolUtil.poolStopSync(threadPoolExecutor);
             PoolUtil.poolStopSync(threadPoolExecutorMain);
         }).start();
     }
 
-    public abstract static class RunProp<T,R> implements Supplier<R>,Runnable{
+    public void syncStop() {
+        PoolUtil.poolStopSync(threadPoolExecutor);
+        PoolUtil.poolStopSync(threadPoolExecutorMain);
+    }
+
+    public abstract static class RunProp<T, R> implements Supplier<R>, Runnable {
 
         public RunProp(T data) {
             this.data = data;
@@ -259,6 +272,7 @@ public class TaskExecutor {
 
         private T data;
     }
+
     /**
      * 任务信息类
      *
